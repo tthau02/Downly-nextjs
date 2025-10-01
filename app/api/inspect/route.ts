@@ -92,9 +92,9 @@ export async function POST(request: Request) {
       : [];
 
     return NextResponse.json({ title, thumbnail, formats });
-  } catch (error: any) {
+  } catch (error) {
     return NextResponse.json(
-      { error: error?.message || "Failed to inspect url" },
+      { error: (error as Error)?.message || "Failed to inspect url" },
       { status: 500 }
     );
   }

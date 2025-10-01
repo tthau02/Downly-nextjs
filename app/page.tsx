@@ -149,8 +149,8 @@ export default function Home() {
           if (best?.formatId) setSelectedFormat(best.formatId);
         }
       }, 0);
-    } catch (e: any) {
-      setError(e?.message || "Something went wrong");
+    } catch (e) {
+      setError((e as Error)?.message || "Something went wrong");
     } finally {
       setLoading(false);
     }
@@ -219,7 +219,9 @@ export default function Home() {
                   <Label>Nền tảng</Label>
                   <Select
                     value={platform}
-                    onValueChange={(v) => setPlatform(v as any)}
+                    onValueChange={(v) =>
+                      setPlatform(v as "tiktok" | "facebook")
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Chọn nền tảng" />
