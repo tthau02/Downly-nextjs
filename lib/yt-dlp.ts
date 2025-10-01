@@ -7,11 +7,14 @@ let cachedYtDlp: YTDlpWrap | null = null;
 function getBinaryPath(): string {
   const isWin = process.platform === "win32";
   const binName = isWin ? "yt-dlp.exe" : "yt-dlp";
-  // Use /tmp on serverless (Vercel). On Windows dev, fallback to .next/cache
-  const baseTmp =
-    process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME
-      ? "/tmp"
-      : path.join(process.cwd(), ".next", "cache");
+  // Use /tmp on serverless (Vercel/AWS). On local dev, fallback to .next/cache
+  const cwd = process.cwd();
+  const isServerless =
+    !!process.env.VERCEL ||
+    !!process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    cwd.startsWith("/var/task") ||
+    process.env.NODE_ENV === "production";
+  const baseTmp = isServerless ? "/tmp" : path.join(cwd, ".next", "cache");
   const binDir = path.join(baseTmp, "yt-dlp");
   if (!fs.existsSync(binDir)) {
     fs.mkdirSync(binDir, { recursive: true });
