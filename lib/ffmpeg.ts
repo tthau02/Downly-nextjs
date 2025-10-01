@@ -33,7 +33,11 @@ export function getFfmpegPath(): string {
     throw new Error("FFmpeg binary not found from ffmpeg-static");
   }
 
-  const targetDir = path.join(cwd, ".next", "cache", "ffmpeg");
+  const baseTmp =
+    process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME
+      ? "/tmp"
+      : path.join(cwd, ".next", "cache");
+  const targetDir = path.join(baseTmp, "ffmpeg");
   const targetPath = path.join(targetDir, binName);
   if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
 

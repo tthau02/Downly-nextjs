@@ -60,7 +60,11 @@ export async function POST(request: Request) {
     } catch {}
 
     // Prepare temp paths
-    const baseDir = path.join(process.cwd(), ".next", "cache", "downloads");
+    const baseTmp =
+      process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME
+        ? "/tmp"
+        : path.join(process.cwd(), ".next", "cache");
+    const baseDir = path.join(baseTmp, "downloads");
     if (!fs.existsSync(baseDir)) fs.mkdirSync(baseDir, { recursive: true });
     const id = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     const tmpIn = path.join(baseDir, `${id}_in.mp4`);
