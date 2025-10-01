@@ -38,7 +38,27 @@ export async function POST(request: Request) {
     }
     const result = await ytDlp.execPromise(args);
 
-    const parsed = JSON.parse(result) as any;
+    type YtDlpFormat = {
+      format_id?: string | number;
+      ext?: string;
+      resolution?: string;
+      width?: number;
+      height?: number;
+      fps?: number;
+      filesize?: number | null;
+      filesize_approx?: number | null;
+      vcodec?: string;
+      acodec?: string;
+      format_note?: string;
+      thumbnails?: { url?: string }[];
+    };
+    type YtDlpJson = {
+      title?: string;
+      thumbnail?: string;
+      thumbnails?: { url?: string }[];
+      formats?: YtDlpFormat[];
+    };
+    const parsed = JSON.parse(result) as YtDlpJson;
 
     const title: string = parsed.title ?? "";
     const thumbnail: string | undefined = Array.isArray(parsed.thumbnails)
@@ -47,14 +67,14 @@ export async function POST(request: Request) {
 
     const formats = Array.isArray(parsed.formats)
       ? parsed.formats
-          .filter((f: any) => !!f.format_id)
-          .filter((f: any) => {
+          .filter((f) => !!f.format_id)
+          .filter((f) => {
             const hasVideo = f.vcodec && f.vcodec !== "none";
             const hasAudio = f.acodec && f.acodec !== "none";
             return platform === "facebook" ? hasVideo : hasVideo && hasAudio;
           })
-          .map((f: any) => ({
-            formatId: String(f.format_id),
+          .map((f) => ({
+            formatId: String(f.format_id as string | number),
             ext: f.ext,
             resolution:
               f.resolution ||

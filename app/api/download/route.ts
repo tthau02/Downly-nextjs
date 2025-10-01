@@ -53,7 +53,7 @@ export async function POST(request: Request) {
         if (cookie) inspectArgs.push("--add-header", `Cookie:${cookie}`);
       }
       const json = await ytDlp.execPromise(inspectArgs);
-      const meta = JSON.parse(json);
+      const meta = JSON.parse(json) as { id?: string | number };
       const idBase = meta?.id?.toString()?.replace(/[^\w\-\.\s]/g, "_") || "id";
       // We transcode to mp4, force extension mp4 for compatibility
       filename = `Downly_${idBase}.mp4`;
@@ -147,7 +147,7 @@ export async function POST(request: Request) {
       },
     });
 
-    const response = new NextResponse(stream as any, {
+    const response = new NextResponse(stream as unknown as BodyInit, {
       status: 200,
       headers: new Headers({
         "Content-Type": "video/mp4",
@@ -168,9 +168,9 @@ export async function POST(request: Request) {
     })();
 
     return response;
-  } catch (error: any) {
+  } catch (error) {
     return NextResponse.json(
-      { error: error?.message || "Failed to resolve download url" },
+      { error: (error as Error)?.message || "Failed to resolve download url" },
       { status: 500 }
     );
   }

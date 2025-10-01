@@ -39,16 +39,17 @@ export default function Home() {
 
   const hasResult = formats.length > 0;
 
-  const sortedFormats = useMemo(() => {
-    return [...formats].sort((a, b) => {
-      const getHeight = (r?: string) => {
-        if (!r) return 0;
-        const m = r.match(/(\d+)p/);
-        return m ? parseInt(m[1], 10) : 0;
-      };
-      return getHeight(b.resolution) - getHeight(a.resolution);
-    });
-  }, [formats]);
+  // keep for future advanced UI sorting if needed
+  // const sortedFormats = useMemo(() => {
+  //   return [...formats].sort((a, b) => {
+  //     const getHeight = (r?: string) => {
+  //       if (!r) return 0;
+  //       const m = r.match(/(\d+)p/);
+  //       return m ? parseInt(m[1], 10) : 0;
+  //     };
+  //     return getHeight(b.resolution) - getHeight(a.resolution);
+  //   });
+  // }, [formats]);
 
   // Build simplified quality choices: Gốc/best, 1080p, 720p, 360p
   const qualityOptions = useMemo(() => {
@@ -134,15 +135,16 @@ export default function Home() {
       // Auto-select "Gốc" nếu có sau khi phân tích
       setTimeout(() => {
         if (Array.isArray(data.formats) && data.formats.length) {
-          const heightOf = (f: any) =>
+          type R = { formatId: string; height?: number; resolution?: string };
+          const heightOf = (f: R) =>
             typeof f.height === "number"
               ? f.height
               : (() => {
                   const m = f.resolution?.match(/(\d+)p/);
                   return m ? parseInt(m[1], 10) : 0;
                 })();
-          const best = [...data.formats]
-            .map((f: any) => ({ ...f, _h: heightOf(f) }))
+          const best = [...(data.formats as R[])]
+            .map((f) => ({ ...f, _h: heightOf(f) }))
             .sort((a, b) => (b._h || 0) - (a._h || 0))[0];
           if (best?.formatId) setSelectedFormat(best.formatId);
         }
@@ -192,8 +194,8 @@ export default function Home() {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(downloadUrl), 5000);
-    } catch (e: any) {
-      setError(e?.message || "Tải xuống thất bại");
+    } catch (e) {
+      setError((e as Error)?.message || "Tải xuống thất bại");
     }
   }
 
