@@ -47,7 +47,10 @@ export async function getYtDlp(): Promise<YTDlpWrap> {
   if (cachedYtDlp) return cachedYtDlp;
 
   const binPath = getBinaryPath();
-  if (!fs.existsSync(binPath)) {
+  if (!fs.existsSync(binPath) || !isValidBinary(binPath)) {
+    try {
+      if (fs.existsSync(binPath)) fs.unlinkSync(binPath);
+    } catch {}
     await downloadStandaloneBinary(binPath);
   }
 
@@ -63,8 +66,8 @@ function getDownloadUrlForPlatform(): string {
   if (platform === "darwin") {
     return "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos";
   }
-  // default to linux binary
-  return "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp";
+  // linux standalone (ELF)
+  return "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux";
 }
 
 async function downloadStandaloneBinary(
@@ -130,5 +133,37 @@ function tryMakeExecutable(filePath: string): void {
     try {
       fs.chmodSync(filePath, 0o755);
     } catch {}
+  }
+}
+
+function isValidBinary(filePath: string): boolean {
+  try {
+    const fd = fs.openSync(filePath, "r");
+    const header = Buffer.alloc(4);
+    fs.readSync(fd, header, 0, 4, 0);
+    fs.closeSync(fd);
+    if (process.platform === "win32") {
+      // 'MZ' header
+      return header[0] === 0x4d && header[1] === 0x5a;
+    }
+    if (process.platform === "darwin") {
+      // Mach-O headers
+      const val = header.readUInt32BE(0);
+      return (
+        val === 0xfeedface ||
+        val === 0xfeedfacf ||
+        val === 0xcafebabe ||
+        val === 0xbebafeca
+      );
+    }
+    // Linux: ELF
+    return (
+      header[0] === 0x7f &&
+      header[1] === 0x45 &&
+      header[2] === 0x4c &&
+      header[3] === 0x46
+    );
+  } catch {
+    return false;
   }
 }
