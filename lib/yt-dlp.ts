@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import YTDlpWrap from "yt-dlp-wrap";
+import https from "node:https";
 
 let cachedYtDlp: YTDlpWrap | null = null;
 
@@ -47,9 +48,90 @@ export async function getYtDlp(): Promise<YTDlpWrap> {
 
   const binPath = getBinaryPath();
   if (!fs.existsSync(binPath)) {
-    await YTDlpWrap.downloadFromGithub(binPath);
+    await downloadStandaloneBinary(binPath);
   }
 
   cachedYtDlp = new YTDlpWrap(binPath);
   return cachedYtDlp;
+}
+
+function getDownloadUrlForPlatform(): string {
+  const platform = process.platform;
+  if (platform === "win32") {
+    return "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
+  }
+  if (platform === "darwin") {
+    return "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos";
+  }
+  // default to linux binary
+  return "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp";
+}
+
+async function downloadStandaloneBinary(
+  destinationPath: string
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const url = getDownloadUrlForPlatform();
+
+    const fileStream = fs.createWriteStream(destinationPath, { mode: 0o755 });
+    https
+      .get(url, (res) => {
+        if (
+          res.statusCode &&
+          res.statusCode >= 300 &&
+          res.statusCode < 400 &&
+          res.headers.location
+        ) {
+          // handle redirect
+          https
+            .get(res.headers.location, (redir) => {
+              if (redir.statusCode !== 200) {
+                reject(
+                  new Error(
+                    `Failed to download yt-dlp: HTTP ${redir.statusCode}`
+                  )
+                );
+                return;
+              }
+              redir.pipe(fileStream);
+              fileStream.on("finish", () => {
+                fileStream.close(() => {
+                  tryMakeExecutable(destinationPath);
+                  resolve();
+                });
+              });
+            })
+            .on("error", reject);
+          return;
+        }
+
+        if (res.statusCode !== 200) {
+          reject(
+            new Error(`Failed to download yt-dlp: HTTP ${res.statusCode}`)
+          );
+          return;
+        }
+        res.pipe(fileStream);
+        fileStream.on("finish", () => {
+          fileStream.close(() => {
+            tryMakeExecutable(destinationPath);
+            resolve();
+          });
+        });
+      })
+      .on("error", (err) => {
+        try {
+          if (fs.existsSync(destinationPath)) fs.unlinkSync(destinationPath);
+        } catch {}
+        reject(err);
+      });
+  });
+}
+
+function tryMakeExecutable(filePath: string): void {
+  if (process.platform !== "win32") {
+    try {
+      fs.chmodSync(filePath, 0o755);
+    } catch {}
+  }
 }
