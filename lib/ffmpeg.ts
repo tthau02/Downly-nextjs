@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import os from "node:os";
 import https from "node:https";
 import ffmpegStatic from "ffmpeg-static";
 
@@ -58,7 +57,7 @@ export function getFfmpegPath(): string {
         downloadFfmpegBinary(targetPath);
       }
       sourcePath = targetPath;
-    } catch (e) {
+    } catch {
       throw new Error("FFmpeg binary not found from ffmpeg-static");
     }
   }

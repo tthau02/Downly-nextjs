@@ -30,7 +30,7 @@ function getBinaryPath(): string {
   if (!fs.existsSync(binDir)) {
     try {
       fs.mkdirSync(binDir, { recursive: true });
-    } catch (error) {
+    } catch {
       // Fallback to OS tmp if the chosen location is not writable (e.g., /var/task)
       const fallback = path.join(os.tmpdir(), "yt-dlp");
       if (!fs.existsSync(fallback)) {

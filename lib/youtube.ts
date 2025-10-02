@@ -35,18 +35,35 @@ export async function youtubeInspect(url: string): Promise<YoutubeInspect> {
     "Referer:https://www.youtube.com/",
   ];
   const json = await ytDlp.execPromise(args);
-  const parsed = JSON.parse(json) as any;
+  const parsed = JSON.parse(json) as {
+    title?: string;
+    thumbnail?: string;
+    id?: string;
+    thumbnails?: Array<{ url?: string; width?: number; height?: number }>;
+    formats?: Array<{
+      format_id?: string | number;
+      ext?: string;
+      resolution?: string;
+      width?: number;
+      height?: number;
+      fps?: number;
+      filesize?: number | null;
+      filesize_approx?: number | null;
+      vcodec?: string;
+      acodec?: string;
+    }>;
+  };
 
   const title: string = parsed.title ?? "";
   const thumbnail: string | undefined = (() => {
     const arr = Array.isArray(parsed.thumbnails) ? parsed.thumbnails : [];
     const bySize = arr
-      .map((t: any) => ({
+      .map((t) => ({
         url: t?.url,
         area: Number(t?.width || 0) * Number(t?.height || 0),
       }))
-      .filter((x: any) => !!x.url)
-      .sort((a: any, b: any) => b.area - a.area);
+      .filter((x) => !!x.url)
+      .sort((a, b) => b.area - a.area);
     if (bySize[0]?.url) return bySize[0].url as string;
     if (parsed.thumbnail) return parsed.thumbnail as string;
     if (parsed.id) return `https://i.ytimg.com/vi/${parsed.id}/hqdefault.jpg`;
@@ -55,9 +72,9 @@ export async function youtubeInspect(url: string): Promise<YoutubeInspect> {
 
   const formats = Array.isArray(parsed.formats)
     ? parsed.formats
-        .filter((f: any) => !!f.format_id)
-        .filter((f: any) => f.vcodec && f.vcodec !== "none")
-        .map((f: any) => ({
+        .filter((f) => !!f.format_id)
+        .filter((f) => f.vcodec && f.vcodec !== "none")
+        .map((f) => ({
           formatId: String(f.format_id),
           ext: f.ext,
           resolution:

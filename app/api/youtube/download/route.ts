@@ -1,12 +1,6 @@
 import { NextResponse } from "next/server";
-import fs from "node:fs";
-import path from "node:path";
 import { getYtDlp } from "@/lib/yt-dlp";
-import {
-  youtubeCommonArgs,
-  youtubeFormatSelector,
-  tryPushFfmpeg,
-} from "@/lib/youtube";
+import { tryPushFfmpeg } from "@/lib/youtube";
 
 export async function POST(request: Request) {
   try {
@@ -71,7 +65,11 @@ export async function POST(request: Request) {
     console.log("[YouTube Download] Streaming:", args);
 
     // Execute yt-dlp with 90s timeout
-    const child: any = ytDlp.exec(args);
+    const child = ytDlp.exec(args) as {
+      stdout?: NodeJS.ReadableStream;
+      kill?: (signal: string) => void;
+      once: (event: string, handler: (arg: unknown) => void) => void;
+    };
     let streamStarted = false;
     let timeoutId: NodeJS.Timeout | null = null;
 
@@ -102,13 +100,15 @@ export async function POST(request: Request) {
           console.log("[YouTube Download] Complete");
           controller.close();
         });
-        child.once("error", (err: Error) => {
+        child.once("error", (arg: unknown) => {
           if (timeoutId) clearTimeout(timeoutId);
+          const err = arg as Error;
           console.error("[YouTube Download] Error:", err);
           controller.error(err);
         });
-        child.once("close", (code: number) => {
+        child.once("close", (arg: unknown) => {
           if (timeoutId) clearTimeout(timeoutId);
+          const code = arg as number;
           console.log("[YouTube Download] Closed, code:", code);
           if (code !== 0 && !streamStarted) {
             controller.error(new Error(`yt-dlp failed with code ${code}`));
