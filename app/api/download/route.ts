@@ -21,8 +21,7 @@ export async function POST(request: Request) {
     const platform =
       body?.platform || (url.includes("facebook.com") ? "facebook" : "tiktok");
     const cookie = (body?.cookie || "").trim();
-    const output: "mp4" | "mp3" =
-      (body as any)?.output === "mp3" ? "mp3" : "mp4";
+    const output: "mp4" | "mp3" = body?.output === "mp3" ? "mp3" : "mp4";
 
     if (!url) {
       return NextResponse.json({ error: "Missing url" }, { status: 400 });

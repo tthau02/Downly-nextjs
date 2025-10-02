@@ -74,7 +74,8 @@ export async function POST(request: Request) {
         .map((t) => ({
           url: t?.url,
           area:
-            Number((t as any)?.width || 0) * Number((t as any)?.height || 0),
+            Number((t as { width?: number })?.width || 0) *
+            Number((t as { height?: number })?.height || 0),
         }))
         .filter((x) => !!x.url)
         .sort((a, b) => b.area - a.area);
