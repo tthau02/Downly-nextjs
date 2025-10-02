@@ -28,7 +28,9 @@ type FormatItem = {
 
 export default function Home() {
   const [url, setUrl] = useState("");
-  const [platform, setPlatform] = useState<"tiktok" | "facebook">("tiktok");
+  const [platform, setPlatform] = useState<"tiktok" | "facebook" | "youtube">(
+    "tiktok"
+  );
   const [cookie, setCookie] = useState("");
   const [loading, setLoading] = useState(false);
   const [formats, setFormats] = useState<FormatItem[]>([]);
@@ -36,6 +38,8 @@ export default function Home() {
   const [thumbnail, setThumbnail] = useState<string | undefined>();
   const [selectedFormat, setSelectedFormat] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [output, setOutput] = useState<"mp4" | "mp3">("mp4");
 
   const hasResult = formats.length > 0;
 
@@ -118,7 +122,9 @@ export default function Home() {
     setThumbnail(undefined);
     setSelectedFormat("");
     try {
-      const res = await fetch("/api/inspect", {
+      const endpoint =
+        platform === "youtube" ? "/api/youtube/inspect" : "/api/inspect";
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -163,13 +169,17 @@ export default function Home() {
       return;
     }
     try {
-      const res = await fetch("/api/download", {
+      setDownloading(true);
+      const endpoint =
+        platform === "youtube" ? "/api/youtube/download" : "/api/download";
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           url,
           formatId: selectedFormat,
           platform,
+          output,
           cookie: platform === "facebook" ? cookie : undefined,
         }),
       });
@@ -196,6 +206,8 @@ export default function Home() {
       setTimeout(() => URL.revokeObjectURL(downloadUrl), 5000);
     } catch (e) {
       setError((e as Error)?.message || "Tải xuống thất bại");
+    } finally {
+      setDownloading(false);
     }
   }
 
@@ -220,7 +232,7 @@ export default function Home() {
                   <Select
                     value={platform}
                     onValueChange={(v) =>
-                      setPlatform(v as "tiktok" | "facebook")
+                      setPlatform(v as "tiktok" | "facebook" | "youtube")
                     }
                   >
                     <SelectTrigger>
@@ -229,6 +241,7 @@ export default function Home() {
                     <SelectContent>
                       <SelectItem value="tiktok">TikTok</SelectItem>
                       <SelectItem value="facebook">Facebook Reels</SelectItem>
+                      <SelectItem value="youtube">YouTube</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -238,7 +251,7 @@ export default function Home() {
                 <div className="flex gap-2">
                   <Input
                     id="videoUrl"
-                    placeholder="Dán link TikTok, Facebook Reels..."
+                    placeholder="Dán link TikTok, Facebook, YouTube..."
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
                   />
@@ -297,10 +310,27 @@ export default function Home() {
                       </Select>
                       <Button
                         onClick={handleDownload}
-                        disabled={!selectedFormat}
+                        disabled={!selectedFormat || downloading}
                       >
-                        Tải xuống
+                        {downloading
+                          ? "Đang tải..."
+                          : `Tải ${output.toUpperCase()}`}
                       </Button>
+                    </div>
+                    <div className="grid gap-1 md:grid-cols-[1fr_auto] items-center">
+                      <div className="text-sm opacity-80">Định dạng tải về</div>
+                      <Select
+                        value={output}
+                        onValueChange={(v) => setOutput(v as "mp4" | "mp3")}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Chọn định dạng" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="mp4">MP4 (video)</SelectItem>
+                          <SelectItem value="mp3">MP3 (âm thanh)</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 </div>

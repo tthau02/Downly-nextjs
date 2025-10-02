@@ -3,7 +3,7 @@ import { getYtDlp } from "@/lib/yt-dlp";
 
 type InspectRequestBody = {
   url?: string;
-  platform?: "tiktok" | "facebook";
+  platform?: "tiktok" | "facebook" | "youtube";
   cookie?: string;
 };
 
@@ -12,7 +12,12 @@ export async function POST(request: Request) {
     const body = (await request.json()) as InspectRequestBody;
     const url = (body && body.url ? body.url : "").trim();
     const platform =
-      body?.platform || (url.includes("facebook.com") ? "facebook" : "tiktok");
+      body?.platform ||
+      (url.includes("facebook.com")
+        ? "facebook"
+        : url.includes("youtube.com") || url.includes("youtu.be")
+        ? "youtube"
+        : "tiktok");
     const cookie = (body?.cookie || "").trim();
 
     if (!url) {
@@ -35,6 +40,8 @@ export async function POST(request: Request) {
     } else if (platform === "facebook") {
       args.push("--add-header", "Referer:https://www.facebook.com/");
       if (cookie) args.push("--add-header", `Cookie:${cookie}`);
+    } else if (platform === "youtube") {
+      args.push("--add-header", "Referer:https://www.youtube.com/");
     }
     const result = await ytDlp.execPromise(args);
 
@@ -58,12 +65,30 @@ export async function POST(request: Request) {
       thumbnails?: { url?: string }[];
       formats?: YtDlpFormat[];
     };
-    const parsed = JSON.parse(result) as YtDlpJson;
+    const parsed = JSON.parse(result) as YtDlpJson & { id?: string };
 
     const title: string = parsed.title ?? "";
-    const thumbnail: string | undefined = Array.isArray(parsed.thumbnails)
-      ? parsed.thumbnails[parsed.thumbnails.length - 1]?.url
-      : parsed.thumbnail;
+    const thumbnail: string | undefined = (() => {
+      const arr = Array.isArray(parsed.thumbnails) ? parsed.thumbnails : [];
+      const bySize = arr
+        .map((t) => ({
+          url: t?.url,
+          area:
+            Number((t as any)?.width || 0) * Number((t as any)?.height || 0),
+        }))
+        .filter((x) => !!x.url)
+        .sort((a, b) => b.area - a.area);
+      if (bySize[0]?.url) return bySize[0].url as string;
+      if (parsed.thumbnail) return parsed.thumbnail as string;
+      // Fallback for YouTube if thumbnails missing
+      if (
+        (url.includes("youtube.com") || url.includes("youtu.be")) &&
+        parsed.id
+      ) {
+        return `https://i.ytimg.com/vi/${parsed.id}/hqdefault.jpg`;
+      }
+      return undefined;
+    })();
 
     const formats = Array.isArray(parsed.formats)
       ? parsed.formats
@@ -71,7 +96,10 @@ export async function POST(request: Request) {
           .filter((f) => {
             const hasVideo = f.vcodec && f.vcodec !== "none";
             const hasAudio = f.acodec && f.acodec !== "none";
-            return platform === "facebook" ? hasVideo : hasVideo && hasAudio;
+            // For Facebook and YouTube allow video-only (we'll merge with bestaudio)
+            return platform === "facebook" || platform === "youtube"
+              ? hasVideo
+              : hasVideo && hasAudio;
           })
           .map((f) => ({
             formatId: String(f.format_id as string | number),

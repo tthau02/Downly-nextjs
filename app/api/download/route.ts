@@ -10,6 +10,7 @@ type DownloadRequestBody = {
   formatId?: string;
   platform?: "tiktok" | "facebook";
   cookie?: string;
+  output?: "mp4" | "mp3";
 };
 
 export async function POST(request: Request) {
@@ -20,6 +21,8 @@ export async function POST(request: Request) {
     const platform =
       body?.platform || (url.includes("facebook.com") ? "facebook" : "tiktok");
     const cookie = (body?.cookie || "").trim();
+    const output: "mp4" | "mp3" =
+      (body as any)?.output === "mp3" ? "mp3" : "mp4";
 
     if (!url) {
       return NextResponse.json({ error: "Missing url" }, { status: 400 });
@@ -30,9 +33,9 @@ export async function POST(request: Request) {
 
     const ytDlp = await getYtDlp();
 
-    // Stream merged media (video+audio) through server.
+    // Stream file through server.
     // We attempt to get a suggested filename first (non-fatal if it fails).
-    let filename = "Downly_video.mp4";
+    let filename = output === "mp3" ? "Downly_audio.mp3" : "Downly_video.mp4";
     try {
       const inspectArgs = [
         "-J",
@@ -55,8 +58,7 @@ export async function POST(request: Request) {
       const json = await ytDlp.execPromise(inspectArgs);
       const meta = JSON.parse(json) as { id?: string | number };
       const idBase = meta?.id?.toString()?.replace(/[^\w\-\.\s]/g, "_") || "id";
-      // We transcode to mp4, force extension mp4 for compatibility
-      filename = `Downly_${idBase}.mp4`;
+      filename = `Downly_${idBase}.${output === "mp3" ? "mp3" : "mp4"}`;
     } catch {}
 
     // Prepare temp paths
@@ -67,11 +69,53 @@ export async function POST(request: Request) {
     const baseDir = path.join(baseTmp, "downloads");
     if (!fs.existsSync(baseDir)) fs.mkdirSync(baseDir, { recursive: true });
     const id = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    const tmpIn = path.join(baseDir, `${id}_in.mp4`);
-    const tmpOut = path.join(baseDir, `${id}_out.mp4`);
+    const tmpIn = path.join(
+      baseDir,
+      `${id}_in.${output === "mp3" ? "m4a" : "mp4"}`
+    );
+    const tmpOut = path.join(
+      baseDir,
+      `${id}_out.${output === "mp3" ? "mp3" : "mp4"}`
+    );
 
-    // Step 1: use yt-dlp to download best video+audio and merge into tmpIn
-    {
+    // Step 1: download
+    if (output === "mp3") {
+      // Extract best audio to mp3 using yt-dlp (uses ffmpeg under the hood)
+      const args = [
+        url,
+        "-f",
+        "bestaudio/best",
+        "-x",
+        "--audio-format",
+        "mp3",
+        "--audio-quality",
+        "0",
+        "-o",
+        tmpOut,
+        "--no-part",
+        "--quiet",
+        "--no-warnings",
+        "--retries",
+        "3",
+        "--add-header",
+        "User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+      ];
+      if (platform === "tiktok") {
+        args.push("--add-header", "Referer:https://www.tiktok.com/");
+      } else if (platform === "facebook") {
+        args.push("--add-header", "Referer:https://www.facebook.com/");
+        if (cookie) args.push("--add-header", `Cookie:${cookie}`);
+      }
+      try {
+        const ff = getFfmpegPath();
+        args.push("--ffmpeg-location", ff);
+      } catch {}
+      await ytDlp.execPromise(args);
+      if (!fs.existsSync(tmpOut)) {
+        throw new Error("Failed to produce mp3 file");
+      }
+    } else {
+      // MP4 merged
       const args = [
         url,
         "-f",
@@ -104,37 +148,39 @@ export async function POST(request: Request) {
       }
     }
 
-    // Step 2: transcode to H.264/AAC using ffmpeg-static
-    const ff = getFfmpegPath();
-    await new Promise<void>((resolve, reject) => {
-      const proc = spawn(ff, [
-        "-y",
-        "-i",
-        tmpIn,
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-crf",
-        "20",
-        "-movflags",
-        "+faststart",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "160k",
-        tmpOut,
-      ]);
-      proc.on("error", reject);
-      proc.on("close", (code) => {
-        if (code === 0 && fs.existsSync(tmpOut)) resolve();
-        else reject(new Error(`ffmpeg exited with code ${code}`));
-      });
-    });
+    // Step 2: if mp4 we can skip transcode; if mp3 already done
+    if (output === "mp4") {
+      try {
+        // If container not mp4/h264, attempt fast mp4 rewrite
+        const ff = getFfmpegPath();
+        await new Promise<void>((resolve, reject) => {
+          const proc = spawn(ff, [
+            "-y",
+            "-i",
+            tmpIn,
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "160k",
+            "-movflags",
+            "+faststart",
+            tmpOut,
+          ]);
+          proc.on("error", reject);
+          proc.on("close", (code) => {
+            if (code === 0 && fs.existsSync(tmpOut)) resolve();
+            else resolve();
+          });
+        });
+      } catch {}
+    }
 
-    // Step 3: stream the transcoded file and cleanup afterwards
-    const fileStat = fs.statSync(tmpOut);
-    const fileStream = fs.createReadStream(tmpOut, { encoding: undefined });
+    const finalPath =
+      output === "mp3" ? tmpOut : fs.existsSync(tmpOut) ? tmpOut : tmpIn;
+    const fileStat = fs.statSync(finalPath);
+    const fileStream = fs.createReadStream(finalPath, { encoding: undefined });
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         fileStream.on("data", (chunk) => {
@@ -154,7 +200,7 @@ export async function POST(request: Request) {
     const response = new NextResponse(stream as unknown as BodyInit, {
       status: 200,
       headers: new Headers({
-        "Content-Type": "video/mp4",
+        "Content-Type": output === "mp3" ? "audio/mpeg" : "video/mp4",
         "Content-Length": String(fileStat.size),
         "Content-Disposition": `attachment; filename="${filename}"`,
         "Cache-Control": "no-store",
