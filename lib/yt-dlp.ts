@@ -70,61 +70,58 @@ function getDownloadUrlForPlatform(): string {
 async function downloadStandaloneBinary(
   destinationPath: string
 ): Promise<void> {
+  const startUrl = getDownloadUrlForPlatform();
+  const maxRedirects = 5;
+
   await new Promise<void>((resolve, reject) => {
-    const url = getDownloadUrlForPlatform();
-
     const fileStream = fs.createWriteStream(destinationPath, { mode: 0o755 });
-    https
-      .get(url, (res) => {
-        if (
-          res.statusCode &&
-          res.statusCode >= 300 &&
-          res.statusCode < 400 &&
-          res.headers.location
-        ) {
-          // handle redirect
-          https
-            .get(res.headers.location, (redir) => {
-              if (redir.statusCode !== 200) {
-                reject(
-                  new Error(
-                    `Failed to download yt-dlp: HTTP ${redir.statusCode}`
-                  )
-                );
-                return;
-              }
-              redir.pipe(fileStream);
-              fileStream.on("finish", () => {
-                fileStream.close(() => {
-                  tryMakeExecutable(destinationPath);
-                  resolve();
-                });
-              });
-            })
-            .on("error", reject);
-          return;
-        }
 
-        if (res.statusCode !== 200) {
-          reject(
-            new Error(`Failed to download yt-dlp: HTTP ${res.statusCode}`)
-          );
-          return;
-        }
-        res.pipe(fileStream);
-        fileStream.on("finish", () => {
-          fileStream.close(() => {
-            tryMakeExecutable(destinationPath);
-            resolve();
+    const requestWithRedirects = (url: string, redirectsLeft: number) => {
+      const req = https.get(
+        url,
+        {
+          headers: {
+            "User-Agent": "Downly/1.0 (+yt-dlp)",
+            Accept: "*/*",
+          },
+        },
+        (res) => {
+          const status = res.statusCode || 0;
+          if (status >= 300 && status < 400 && res.headers.location) {
+            if (redirectsLeft <= 0) {
+              reject(
+                new Error("Failed to download yt-dlp: too many redirects")
+              );
+              return;
+            }
+            const nextUrl = new URL(res.headers.location, url).toString();
+            res.resume();
+            requestWithRedirects(nextUrl, redirectsLeft - 1);
+            return;
+          }
+
+          if (status !== 200) {
+            reject(new Error(`Failed to download yt-dlp: HTTP ${status}`));
+            return;
+          }
+          res.pipe(fileStream);
+          fileStream.on("finish", () => {
+            fileStream.close(() => {
+              tryMakeExecutable(destinationPath);
+              resolve();
+            });
           });
-        });
-      })
-      .on("error", (err) => {
+        }
+      );
+      req.on("error", (err) => {
         try {
           if (fs.existsSync(destinationPath)) fs.unlinkSync(destinationPath);
         } catch {}
         reject(err);
       });
+    };
+
+    requestWithRedirects(startUrl, maxRedirects);
   });
 }
 
